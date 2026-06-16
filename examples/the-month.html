@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The Month — budgeted-choice example</title>
+    <script src="https://unpkg.com/jspsych@8.2.1"></script>
+    <script src="https://unpkg.com/@jspsych/plugin-html-button-response@2.1.0"></script>
+    <script src="https://unpkg.com/@jspsych/plugin-instructions@2.1.0"></script>
+    <!-- The plugin under test (prebuilt global build; no compile step needed). -->
+    <script src="../dist/index.global.js"></script>
+    <link href="https://unpkg.com/jspsych@8.2.1/css/jspsych.css" rel="stylesheet" />
+    <style>
+      body { background: #eef1f4; }
+      .jspsych-content { max-width: 720px; }
+    </style>
+  </head>
+  <body></body>
+  <script>
+    /* ----------------------------------------------------------------------
+       "The Month": a four-week scarcity task built entirely from the
+       budgeted-choice plugin plus scripted bills. Demonstrates how to thread a
+       running budget across trials and how to operationalize three constructs:
+         - ambiguity aversion  (known vs. unknown EV-matched options)
+         - likelihood (in)sensitivity  (gamble vs. sure across stated p)
+         - desperation threshold  (a fixed long-shot offered as money depletes)
+       ---------------------------------------------------------------------- */
+
+    const jsPsych = initJsPsych({
+      on_finish: () => jsPsych.data.displayData("csv"),
+    });
+    jsPsych.randomization.setSeed("the-month-demo"); // reproducible outcomes
+
+    const START = 1000;
+    const budget = { value: START };
+
+    // Helper: a decision trial that reads/writes the shared budget.
+    function decision(cfg) {
+      return Object.assign(
+        {
+          type: jsPsychBudgetedChoice,
+          balance: () => budget.value,
+          start_balance: START,
+          currency: "$",
+          tight_at: 400,
+          desperate_at: 120,
+          status_label: cfg.week || "",
+          on_finish: (d) => {
+            budget.value = d.balance_after;
+            d.construct = cfg.construct;
+            d.event_id = cfg.event_id;
+          },
+        },
+        cfg.trial
+      );
+    }
+
+    // Helper: a scripted bill (an expense that depletes the budget).
+    function bill(label, amount, week) {
+      return {
+        type: jsPsychHtmlButtonResponse,
+        stimulus: `<p style="font-size:1.05rem">${week ? `<b>${week}.</b> ` : ""}${label}</p>
+                   <p style="font-family:monospace;font-size:1.3rem;color:#a8322a">-$${amount}</p>`,
+        choices: ["Pay it"],
+        data: { trial_role: "expense", expense_amount: -amount, event_id: label },
+        on_finish: (d) => { budget.value -= amount; d.money_after = budget.value; },
+      };
+    }
+
+    const intro = {
+      type: jsPsychInstructions,
+      pages: [
+        "<h2>The Month</h2><p>You're getting by on a tight budget. Over four weeks you'll face bills you must pay and choices about money.</p>",
+        "<p>For each choice, pick the option you'd actually prefer. Some options are sure things; others are gambles. Sometimes the odds are stated, and sometimes they're unknown.</p><p>Your balance is shown at the top and updates as you go.</p>",
+      ],
+      show_clickable_nav: true,
+    };
+
+    // ---- Week 1 -----------------------------------------------------------
+    const desp_1 = decision({
+      construct: "desperation", event_id: "desp_1", week: "Week 1",
+      trial: {
+        scene: "A scratch-ticket booth catches your eye.",
+        prompt: "Spend your spare change on it?",
+        options: [
+          { label: "Buy the ticket — 20% chance of $120, else nothing", win: 120, lose: 0, p: 0.2, tag: "gamble" },
+          { label: "Keep the $20 in your pocket", win: 20, p: 1, tag: "sure" },
+        ],
+      },
+    });
+    const amb_1 = decision({
+      construct: "ambiguity", event_id: "amb_1", week: "Week 1",
+      trial: {
+        scene: "A promo offers one of two payout cards, each worth <b>$80</b> if it hits.",
+        prompt: "Which card do you take?",
+        options: [
+          { label: "Card A — hits 60% of the time", win: 80, p: 0.6, tag: "known" },
+          { label: "Card B — hit rate not disclosed", win: 80, p: 0.6, ambiguous: true, tag: "ambiguous" },
+        ],
+      },
+    });
+    const lik_1 = decision({
+      construct: "likelihood", event_id: "lik_1", week: "Week 1",
+      trial: {
+        scene: "A side gig has an almost-certain bonus.",
+        prompt: "Take the gamble or the sure pay?",
+        options: [
+          { label: "Gamble — 90% chance of $50", win: 50, lose: 0, p: 0.9, tag: "gamble" },
+          { label: "Sure $40", win: 40, p: 1, tag: "sure" },
+        ],
+      },
+    });
+
+    // ---- Week 2 -----------------------------------------------------------
+    const lik_2 = decision({
+      construct: "likelihood", event_id: "lik_2", week: "Week 2",
+      trial: {
+        prompt: "Take the gamble or the sure pay?",
+        options: [
+          { label: "Gamble — 50% chance of $90", win: 90, lose: 0, p: 0.5, tag: "gamble" },
+          { label: "Sure $40", win: 40, p: 1, tag: "sure" },
+        ],
+      },
+    });
+    const amb_2 = decision({
+      construct: "ambiguity", event_id: "amb_2", week: "Week 2",
+      trial: {
+        scene: "Two refund offers, each worth <b>$90</b> if approved.",
+        prompt: "Which do you file?",
+        options: [
+          { label: "Offer A — 50% approval rate", win: 90, p: 0.5, tag: "known" },
+          { label: "Offer B — approval rate unstated", win: 90, p: 0.5, ambiguous: true, tag: "ambiguous" },
+        ],
+      },
+    });
+    const lik_3 = decision({
+      construct: "likelihood", event_id: "lik_3", week: "Week 2",
+      trial: {
+        prompt: "Take the gamble or the sure pay?",
+        options: [
+          { label: "Gamble — 10% chance of $120", win: 120, lose: 0, p: 0.1, tag: "gamble" },
+          { label: "Sure $10", win: 10, p: 1, tag: "sure" },
+        ],
+      },
+    });
+
+    // ---- Week 3 -----------------------------------------------------------
+    const desp_2 = decision({
+      construct: "desperation", event_id: "desp_2", week: "Week 3",
+      trial: {
+        scene: "The same scratch-ticket booth, now that money's tighter.",
+        prompt: "Spend on it?",
+        options: [
+          { label: "Buy the ticket — 20% chance of $120, else nothing", win: 120, lose: 0, p: 0.2, tag: "gamble" },
+          { label: "Keep the $20", win: 20, p: 1, tag: "sure" },
+        ],
+      },
+    });
+    const lik_4 = decision({
+      construct: "likelihood", event_id: "lik_4", week: "Week 3",
+      trial: {
+        prompt: "Take the gamble or the sure pay?",
+        options: [
+          { label: "Gamble — 75% chance of $60", win: 60, lose: 0, p: 0.75, tag: "gamble" },
+          { label: "Sure $40", win: 40, p: 1, tag: "sure" },
+        ],
+      },
+    });
+    const amb_3 = decision({
+      construct: "ambiguity", event_id: "amb_3", week: "Week 3",
+      trial: {
+        scene: "Two vouchers, each worth <b>$70</b> if valid.",
+        prompt: "Which do you claim?",
+        options: [
+          { label: "Voucher A — 70% valid", win: 70, p: 0.7, tag: "known" },
+          { label: "Voucher B — validity unknown", win: 70, p: 0.7, ambiguous: true, tag: "ambiguous" },
+        ],
+      },
+    });
+    const lik_5 = decision({
+      construct: "likelihood", event_id: "lik_5", week: "Week 3",
+      trial: {
+        prompt: "Take the gamble or the sure pay?",
+        options: [
+          { label: "Gamble — 25% chance of $100", win: 100, lose: 0, p: 0.25, tag: "gamble" },
+          { label: "Sure $20", win: 20, p: 1, tag: "sure" },
+        ],
+      },
+    });
+
+    // ---- Week 4 -----------------------------------------------------------
+    const lik_6 = decision({
+      construct: "likelihood", event_id: "lik_6", week: "Week 4",
+      trial: {
+        prompt: "Take the gamble or the sure pay?",
+        options: [
+          { label: "Gamble — 5% chance of $120", win: 120, lose: 0, p: 0.05, tag: "gamble" },
+          { label: "Sure $5", win: 5, p: 1, tag: "sure" },
+        ],
+      },
+    });
+    const amb_4 = decision({
+      construct: "ambiguity", event_id: "amb_4", week: "Week 4",
+      trial: {
+        scene: "Two last-chance payouts, each worth <b>$90</b>.",
+        prompt: "Which do you pick?",
+        options: [
+          { label: "Option A — 50% chance", win: 90, p: 0.5, tag: "known" },
+          { label: "Option B — chance unknown", win: 90, p: 0.5, ambiguous: true, tag: "ambiguous" },
+        ],
+      },
+    });
+    const lik_7 = decision({
+      construct: "likelihood", event_id: "lik_7", week: "Week 4",
+      trial: {
+        prompt: "Take the gamble or the sure pay?",
+        options: [
+          { label: "Gamble — 95% chance of $45", win: 45, lose: 0, p: 0.95, tag: "gamble" },
+          { label: "Sure $40", win: 40, p: 1, tag: "sure" },
+        ],
+      },
+    });
+    const desp_3 = decision({
+      construct: "desperation", event_id: "desp_3", week: "Week 4",
+      trial: {
+        scene: "The booth again, with almost nothing left.",
+        prompt: "Spend on it?",
+        options: [
+          { label: "Buy the ticket — 20% chance of $120, else nothing", win: 120, lose: 0, p: 0.2, tag: "gamble" },
+          { label: "Keep the $20", win: 20, p: 1, tag: "sure" },
+        ],
+      },
+    });
+    const amb_5 = decision({
+      construct: "ambiguity", event_id: "amb_5", week: "Week 4",
+      trial: {
+        scene: "One final pair of cards, each worth <b>$80</b>.",
+        prompt: "Which do you take?",
+        options: [
+          { label: "Card A — 40% chance", win: 80, p: 0.4, tag: "known" },
+          { label: "Card B — chance unknown", win: 80, p: 0.4, ambiguous: true, tag: "ambiguous" },
+        ],
+      },
+    });
+
+    const outro = {
+      type: jsPsychHtmlButtonResponse,
+      stimulus: "<h2>End of the month.</h2><p>Thanks for playing. Your data will display next (CSV).</p>",
+      choices: ["See data"],
+    };
+
+    const timeline = [
+      intro,
+      desp_1, amb_1, lik_1,
+      bill("Groceries", 140, "Week 1"),
+      bill("Rent", 650, "Week 1"),
+      lik_2, amb_2, lik_3,
+      bill("Transit pass", 110, "Week 2"),
+      bill("Utilities", 190, "Week 2"),
+      desp_2, lik_4, amb_3, lik_5,
+      bill("Phone", 120, "Week 3"),
+      bill("Medical co-pay", 240, "Week 3"),
+      lik_6, amb_4, lik_7, desp_3, amb_5,
+      outro,
+    ];
+
+    jsPsych.run(timeline);
+  </script>
+</html>
