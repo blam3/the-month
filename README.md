@@ -7,6 +7,8 @@ guaranteed payoffs, and scripted expenses across a simulated month. The plugin
 records how choices update a running balance; the demo provides local CSV/JSON
 export. It is not a validated psychological assessment or a real-money task.
 
+[**Open the browser demo**](https://blam3.github.io/the-month/)
+
 ![Budgeted-choice browser demo](docs/demo.png)
 
 ## Try it locally
