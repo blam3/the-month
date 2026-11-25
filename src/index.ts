@@ -1,6 +1,6 @@
 import { JsPsych, JsPsychPlugin, ParameterType, TrialType } from "jspsych";
 
-import { version } from "../package.json";
+import { version } from "./version";
 
 const info = <const>{
   name: "budgeted-choice",
@@ -169,8 +169,8 @@ class BudgetedChoicePlugin implements JsPsychPlugin<Info> {
   private resolve(opt: any) {
     let delta: number;
     let won: boolean | null = null;
-    if (opt.p >= 1) {
-      delta = opt.win;
+    if (opt.p === 0 || opt.p === 1) {
+      delta = opt.p === 1 ? opt.win : opt.lose;
     } else {
       won = this.jsPsych.randomization.sampleWithReplacement([true, false], 1, [opt.p, 1 - opt.p])[0];
       delta = won ? opt.win : opt.lose;
@@ -186,8 +186,8 @@ class BudgetedChoicePlugin implements JsPsychPlugin<Info> {
       response: displayIndex,
       chosen_tag: chosen.tag,
       chosen_label: chosen.label,
-      chose_sure: chosen.p >= 1 ? 1 : 0,
-      chose_risky: chosen.p < 1 ? 1 : 0,
+      chose_sure: chosen.p === 0 || chosen.p === 1 ? 1 : 0,
+      chose_risky: chosen.p > 0 && chosen.p < 1 ? 1 : 0,
       chose_ambiguous: chosen.ambiguous ? 1 : 0,
       chosen_p: chosen.p,
       chosen_win: chosen.win,
@@ -214,17 +214,33 @@ class BudgetedChoicePlugin implements JsPsychPlugin<Info> {
       });
     }
     if (data.outcome_won === null) {
-      return `<p class="bc-outcome bc-win">You earned <b>${fmt(trial.currency, data.delta)}</b>.</p>`;
+      return `<p class="bc-outcome bc-win">Outcome: <b>${fmt(trial.currency, data.delta)}</b>.</p>`;
     }
     if (data.outcome_won) {
-      return `<p class="bc-outcome bc-win">It paid off — <b>+${fmt(trial.currency, data.delta)}</b>.</p>`;
+      return `<p class="bc-outcome bc-win">Outcome: <b>${fmt(trial.currency, data.delta)}</b>.</p>`;
     }
-    return `<p class="bc-outcome bc-lose">It didn't come through — <b>${fmt(trial.currency, 0)}</b>.</p>`;
+    return `<p class="bc-outcome bc-lose">Outcome: <b>${fmt(trial.currency, data.delta)}</b>.</p>`;
+  }
+
+  private validate(trial: any) {
+    if (!Number.isFinite(trial.balance)) throw new Error("balance must be finite");
+    if (!Array.isArray(trial.options) || trial.options.length === 0) throw new Error("options must not be empty");
+    for (const option of trial.options) {
+      if (!Number.isFinite(option.p) || option.p < 0 || option.p > 1) throw new Error("p must be in [0, 1]");
+      if (!Number.isFinite(option.win) || !Number.isFinite(option.lose)) throw new Error("payoffs must be finite");
+    }
+    if (trial.start_balance !== null && (!Number.isFinite(trial.start_balance) || trial.start_balance <= 0)) {
+      throw new Error("start_balance must be positive when supplied");
+    }
+    if (trial.feedback_duration !== null && (!Number.isFinite(trial.feedback_duration) || trial.feedback_duration < 0)) {
+      throw new Error("feedback_duration must be nonnegative when supplied");
+    }
   }
 
   trial(display_element: HTMLElement, trial: TrialType<Info>) {
     injectStyle();
     const t = trial as any;
+    this.validate(t);
 
     let displayOrder = t.options.slice();
     if (t.randomize_option_order) displayOrder = this.jsPsych.randomization.shuffle(displayOrder);
@@ -266,8 +282,11 @@ class BudgetedChoicePlugin implements JsPsychPlugin<Info> {
       }
     };
 
+    let responded = false;
     display_element.querySelectorAll(".bc-opt").forEach((btn) => {
       btn.addEventListener("click", function (this: HTMLElement) {
+        if (responded) return;
+        responded = true;
         const i = parseInt(this.getAttribute("data-i") as string, 10);
         const data: any = self.buildData(t, displayOrder, i);
         data.rt = Math.round(performance.now() - start_time);
@@ -292,34 +311,41 @@ class BudgetedChoicePlugin implements JsPsychPlugin<Info> {
     }
   }
 
+  private simulationChoice(trial: any, simulation_options: any) {
+    this.validate(trial);
+    const idx = simulation_options?.data?.response ?? this.jsPsych.randomization.randomInt(0, trial.options.length - 1);
+    const rt = simulation_options?.data?.rt ?? Math.round(this.jsPsych.randomization.sampleExGaussian(600, 200, 1 / 300, true));
+    if (!Number.isInteger(idx) || idx < 0 || idx >= trial.options.length || !Number.isFinite(rt) || rt < 0) {
+      throw new Error("simulation response/rt is invalid");
+    }
+    return { idx, rt };
+  }
+
   private create_simulation_data(trial: TrialType<Info>, simulation_options: any) {
     const t = trial as any;
-    let displayOrder = t.options.slice();
-    if (t.randomize_option_order) displayOrder = this.jsPsych.randomization.shuffle(displayOrder);
-    const idx = this.jsPsych.randomization.randomInt(0, displayOrder.length - 1);
-    const data: any = this.buildData(t, displayOrder, idx);
-    data.rt = Math.round(this.jsPsych.randomization.sampleExGaussian(600, 200, 1 / 300, true));
-    return this.jsPsych.pluginAPI.mergeSimulationData(data, simulation_options);
+    const { idx, rt } = this.simulationChoice(t, simulation_options);
+    const displayOrder = t.randomize_option_order ? this.jsPsych.randomization.shuffle(t.options) : t.options.slice();
+    return { ...this.buildData(t, displayOrder, idx), rt };
   }
 
   private simulate_visual(trial: TrialType<Info>, simulation_options: any, load_callback: () => void) {
     const t = trial as any;
-    const self = this;
-    const data = this.create_simulation_data(trial, simulation_options);
+    // Choose the response without drawing the outcome. trial() resolves it once.
+    const { idx, rt } = this.simulationChoice(t, simulation_options);
     const display_element = this.jsPsych.getDisplayElement();
     this.trial(display_element, trial);
     load_callback();
-    this.jsPsych.pluginAPI.clickTarget(
-      display_element.querySelector(`.bc-opt[data-i="${data.response}"]`) as Element,
-      data.rt
-    );
-    if (t.feedback && t.feedback_duration == null) {
-      this.jsPsych.pluginAPI.setTimeout(() => {
-        const c = display_element.querySelector("#bc-continue");
-        if (c) self.jsPsych.pluginAPI.clickTarget(c);
-      }, data.rt + 100);
-    }
+    this.jsPsych.pluginAPI.setTimeout(() => {
+      const choice = display_element.querySelector(`.bc-opt[data-i="${idx}"]`) as HTMLElement;
+      choice.click();
+      if (t.feedback && t.feedback_duration == null) {
+        this.jsPsych.pluginAPI.setTimeout(() => {
+          (display_element.querySelector("#bc-continue") as HTMLElement)?.click();
+        }, 100);
+      }
+    }, rt);
   }
+
 }
 
 export default BudgetedChoicePlugin;

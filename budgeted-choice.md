@@ -13,7 +13,7 @@ schedule.
 
 ## Parameters
 
-In addition to the [parameters available in all plugins](../overview/plugins.md#parameters-available-in-all-plugins), this plugin accepts the following parameters. Parameters with a default value of *undefined* must be specified.
+In addition to the [parameters available in all plugins](https://www.jspsych.org/v8/overview/plugins/#parameters-available-in-all-plugins), this plugin accepts the following parameters. Parameters with a default value of *undefined* must be specified.
 
 | Parameter                | Type             | Default     | Description                                                                                              |
 | ------------------------ | ---------------- | ----------- | ------------------------------------------------------------------------------------------------------- |
@@ -52,8 +52,8 @@ Each option object:
 | rt              | integer | Response time (ms) from option onset.                             |
 | chosen_tag      | string  | Tag of the chosen option.                                         |
 | chosen_label    | string  | Label of the chosen option.                                       |
-| chose_sure      | integer | 1 if a sure option (p ≥ 1) was chosen.                            |
-| chose_risky     | integer | 1 if a probabilistic option (p < 1) was chosen.                  |
+| chose_sure      | integer | 1 if a sure option (p = 0 or 1) was chosen.                            |
+| chose_risky     | integer | 1 if a probabilistic option (0 < p < 1) was chosen.                  |
 | chose_ambiguous | integer | 1 if an ambiguous option was chosen.                              |
 | chosen_p        | numeric | Probability of the chosen option (hidden true value if ambiguous).|
 | chosen_win      | numeric | Win payoff of the chosen option.                                  |

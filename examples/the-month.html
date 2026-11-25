@@ -26,10 +26,24 @@
          - desperation threshold  (a fixed long-shot offered as money depletes)
        ---------------------------------------------------------------------- */
 
-    const jsPsych = initJsPsych({
-      on_finish: () => jsPsych.data.displayData("csv"),
-    });
-    jsPsych.randomization.setSeed("the-month-demo"); // reproducible outcomes
+    const seed = new URLSearchParams(location.search).get("seed") || "the-month-demo";
+    const sessionId = crypto.randomUUID();
+    const jsPsych = initJsPsych({ on_finish: showExport });
+    jsPsych.randomization.setSeed(seed);
+    jsPsych.data.addProperties({ demo_only: true, schema_version: "1.0", seed, session_id: sessionId, plugin_version: "0.1.1" });
+
+    function showExport() {
+      const ledger = jsPsych.data.get().filterCustom(row => row.trial_role === "decision" || row.trial_role === "expense");
+      const content = document.querySelector(".jspsych-content");
+      content.innerHTML = `<h2>Demo complete</h2><p>This is demonstration data, not a psychological assessment.</p>
+        <p id="export-summary"></p>
+        <button class="jspsych-btn" id="download-csv">Download CSV</button>
+        <button class="jspsych-btn" id="download-json">Download JSON</button>
+        <p>Files are generated locally. No responses are uploaded.</p>`;
+      document.getElementById("export-summary").textContent = `${ledger.count()} decision/expense rows. Final balance: $${budget.value}.`;
+      document.getElementById("download-csv").addEventListener("click", () => ledger.localSave("csv", "the-month-demo.csv"));
+      document.getElementById("download-json").addEventListener("click", () => ledger.localSave("json", "the-month-demo.json"));
+    }
 
     const START = 1000;
     const budget = { value: START };
@@ -49,6 +63,7 @@
             budget.value = d.balance_after;
             d.construct = cfg.construct;
             d.event_id = cfg.event_id;
+            d.trial_role = "decision";
           },
         },
         cfg.trial
@@ -63,14 +78,14 @@
                    <p style="font-family:monospace;font-size:1.3rem;color:#a8322a">-$${amount}</p>`,
         choices: ["Pay it"],
         data: { trial_role: "expense", expense_amount: -amount, event_id: label },
-        on_finish: (d) => { budget.value -= amount; d.money_after = budget.value; },
+        on_finish: (d) => { d.balance_before = budget.value; d.delta = -amount; budget.value -= amount; d.balance_after = budget.value; },
       };
     }
 
     const intro = {
       type: jsPsychInstructions,
       pages: [
-        "<h2>The Month</h2><p>You're getting by on a tight budget. Over four weeks you'll face bills you must pay and choices about money.</p>",
+        "<h2>The Month · Research task prototype</h2><p>Demonstration only. No real money or psychological scores. Data stays in this browser until you download it.</p><p>You're getting by on a tight budget. Over four weeks you'll face bills you must pay and choices about money.</p>",
         "<p>For each choice, pick the option you'd actually prefer. Some options are sure things; others are gambles. Sometimes the odds are stated, and sometimes they're unknown.</p><p>Your balance is shown at the top and updates as you go.</p>",
       ],
       show_clickable_nav: true,
@@ -80,11 +95,11 @@
     const desp_1 = decision({
       construct: "desperation", event_id: "desp_1", week: "Week 1",
       trial: {
-        scene: "A scratch-ticket booth catches your eye.",
-        prompt: "Spend your spare change on it?",
+        scene: "An optional bonus offer is available.",
+        prompt: "Which bonus do you prefer?",
         options: [
-          { label: "Buy the ticket — 20% chance of $120, else nothing", win: 120, lose: 0, p: 0.2, tag: "gamble" },
-          { label: "Keep the $20 in your pocket", win: 20, p: 1, tag: "sure" },
+          { label: "20% chance of a $120 bonus; otherwise $0", win: 120, lose: 0, p: 0.2, tag: "gamble" },
+          { label: "Take a guaranteed $20 bonus", win: 20, p: 1, tag: "sure" },
         ],
       },
     });
@@ -148,11 +163,11 @@
     const desp_2 = decision({
       construct: "desperation", event_id: "desp_2", week: "Week 3",
       trial: {
-        scene: "The same scratch-ticket booth, now that money's tighter.",
-        prompt: "Spend on it?",
+        scene: "The same bonus offer, later in the month.",
+        prompt: "Which bonus do you prefer?",
         options: [
-          { label: "Buy the ticket — 20% chance of $120, else nothing", win: 120, lose: 0, p: 0.2, tag: "gamble" },
-          { label: "Keep the $20", win: 20, p: 1, tag: "sure" },
+          { label: "20% chance of a $120 bonus; otherwise $0", win: 120, lose: 0, p: 0.2, tag: "gamble" },
+          { label: "Take a guaranteed $20 bonus", win: 20, p: 1, tag: "sure" },
         ],
       },
     });
@@ -223,11 +238,11 @@
     const desp_3 = decision({
       construct: "desperation", event_id: "desp_3", week: "Week 4",
       trial: {
-        scene: "The booth again, with almost nothing left.",
-        prompt: "Spend on it?",
+        scene: "The same bonus offer near the end of the month.",
+        prompt: "Which bonus do you prefer?",
         options: [
-          { label: "Buy the ticket — 20% chance of $120, else nothing", win: 120, lose: 0, p: 0.2, tag: "gamble" },
-          { label: "Keep the $20", win: 20, p: 1, tag: "sure" },
+          { label: "20% chance of a $120 bonus; otherwise $0", win: 120, lose: 0, p: 0.2, tag: "gamble" },
+          { label: "Take a guaranteed $20 bonus", win: 20, p: 1, tag: "sure" },
         ],
       },
     });
@@ -245,8 +260,8 @@
 
     const outro = {
       type: jsPsychHtmlButtonResponse,
-      stimulus: "<h2>End of the month.</h2><p>Thanks for playing. Your data will display next (CSV).</p>",
-      choices: ["See data"],
+      stimulus: "<h2>End of the month.</h2><p>Thanks for playing. You can download the decision and expense ledger next.</p>",
+      choices: ["View export"],
     };
 
     const timeline = [
